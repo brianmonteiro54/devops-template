@@ -43,23 +43,26 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 2. Log in no AWS ECR
+      # 2. Definir a região da AWS como variável de ambiente
+      - name: Configure AWS Region
+        run: echo "AWS_REGION=${{ secrets.AWS_REGION }}" >> $GITHUB_ENV
+
+      # 3. Log in no AWS ECR
       - name: Log in to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
-        with:
-          region: ${{ secrets.AWS_REGION }}
 
-      # 3. Build e tag da imagem Docker
+      # 4. Build, tag, and push Docker image to ECR
       - name: Build, tag, and push Docker image to ECR
         env:
           ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
           ECR_REPOSITORY: ${{ inputs.IMAGE_NAME }}
-          IMAGE_TAG: ${{ github.sha }}  
+          IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
+      # 5. Deploy to ECS
       - name: Deploy to ECS
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
