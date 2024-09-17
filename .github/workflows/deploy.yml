@@ -83,10 +83,6 @@
             container-name: ${{ env.CONTAINER_NAME }}
             image: ${{ fromJSON(steps.metadata.outputs.json).tags[0] }}  # Passa apenas a primeira tag (latest)
   
-        # **Step de Debug para Task Definition Renderizada**
-        - name: Print rendered task definition
-          run: cat task-definition.json
-  
         # 7. Fazer o deploy da task definition atualizada no ECS
         - name: Deploy Amazon ECS task definition
           uses: aws-actions/amazon-ecs-deploy-task-definition@v1
