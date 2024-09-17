@@ -1,80 +1,60 @@
-name: Build & Deploy to ECS
+name: Deploy to Amazon ECS
 
 on:
   workflow_call:
     inputs:
       IMAGE_NAME:
-        description: "The name of the Docker image to build and push"
-        required: true
-        type: string
-      TASK_NAME:
-        description: "The ECS Task Definition name"
-        required: true
-        type: string
-      CONTAINER_NAME:
-        description: "The ECS container name in the task"
-        required: true
-        type: string
-      ECS_SERVICE:
-        description: "The ECS Service name"
         required: true
         type: string
       ECS_CLUSTER:
-        description: "The ECS Cluster name"
+        required: true
+        type: string
+      ECS_SERVICE:
+        required: true
+        type: string
+      TASK_NAME:
         required: true
         type: string
     secrets:
       AWS_ACCESS_KEY_ID:
-        description: "AWS Access Key ID"
         required: true
       AWS_SECRET_ACCESS_KEY:
-        description: "AWS Secret Access Key"
         required: true
       AWS_REGION:
-        description: "AWS Region"
         required: true
+
+env:
+  IMAGE_NAME: ${{ inputs.IMAGE_NAME }}
 
 jobs:
   deploy:
+    name: Deploy to ECS
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout do código
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      # 2. Configurar as credenciais da AWS
+      # 1. Configurar as credenciais da AWS
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # 3. Log in no AWS ECR
-      - name: Log in to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
-
-      # 4. Build, tag, and push Docker image to ECR
-      - name: Build, tag, and push Docker image to ECR
-        env:
-          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-          ECR_REPOSITORY: ${{ inputs.IMAGE_NAME }}
-          IMAGE_TAG: ${{ github.sha }}
+      # 2. Obter o AWS Account ID dinamicamente
+      - name: Get AWS Account ID
+        id: get-account-id
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID" >> $GITHUB_ENV
 
-      # 5. Deploy to ECS
-      - name: Deploy to ECS
+      # 3. Atualizar Task Definition do ECS
+      - name: Update ECS Task Definition
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           CLUSTER_NAME: ${{ inputs.ECS_CLUSTER }}
           SERVICE_NAME: ${{ inputs.ECS_SERVICE }}
           TASK_DEFINITION: ${{ inputs.TASK_NAME }}
-          CONTAINER_NAME: ${{ inputs.CONTAINER_NAME }}
-          IMAGE_URI: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ inputs.IMAGE_NAME }}:${{ github.sha }}
+          IMAGE_URI: ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.IMAGE_NAME }}:latest
         run: |
           # Obter a task definition atual
           TASK_DEFINITION_ARN=$(aws ecs describe-task-definition \
@@ -85,7 +65,7 @@ jobs:
           # Criar nova task definition com a nova imagem
           NEW_TASK_DEFINITION=$(aws ecs register-task-definition \
             --family $TASK_DEFINITION \
-            --container-definitions "[{\"name\":\"$CONTAINER_NAME\",\"image\":\"$IMAGE_URI\",\"essential\":true,\"memory\":512,\"cpu\":256,\"portMappings\":[{\"containerPort\":3000,\"hostPort\":3000,\"protocol\":\"tcp\"}]}]" \
+            --container-definitions "[{\"name\":\"${{ inputs.TASK_NAME }}\",\"image\":\"$IMAGE_URI\",\"essential\":true,\"memory\":512,\"cpu\":256,\"portMappings\":[{\"containerPort\":3000,\"hostPort\":3000,\"protocol\":\"tcp\"}]}]" \
             --query "taskDefinition.taskDefinitionArn" \
             --output text)
 
