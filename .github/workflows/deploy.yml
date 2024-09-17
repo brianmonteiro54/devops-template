@@ -81,7 +81,7 @@
           with:
             task-definition: task-definition.json
             container-name: ${{ env.CONTAINER_NAME }}
-            image: ${{ steps.metadata.outputs.tags }}
+            image: ${{ steps.metadata.outputs.tags[0] }}
   
         # **Step de Debug para Task Definition Renderizada**
         - name: Print rendered task definition
