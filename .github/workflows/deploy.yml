@@ -1,76 +1,95 @@
-name: Deploy to Amazon ECS
-
-on:
-  workflow_call:
-    inputs:
-      IMAGE_NAME:
-        required: true
-        type: string
-      ECS_CLUSTER:
-        required: true
-        type: string
-      ECS_SERVICE:
-        required: true
-        type: string
-      TASK_NAME:
-        required: true
-        type: string
-    secrets:
-      AWS_ACCESS_KEY_ID:
-        required: true
-      AWS_SECRET_ACCESS_KEY:
-        required: true
-      AWS_REGION:
-        required: true
-
-env:
-  IMAGE_NAME: ${{ inputs.IMAGE_NAME }}
-
-jobs:
-  deploy:
-    name: Deploy to ECS
-    runs-on: ubuntu-latest
-
-    steps:
-      # 1. Configurar as credenciais da AWS
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      # 2. Obter o AWS Account ID dinamicamente
-      - name: Get AWS Account ID
-        id: get-account-id
-        run: |
-          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          echo "AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID" >> $GITHUB_ENV
-
-      # 3. Atualizar Task Definition do ECS
-      - name: Update ECS Task Definition
-        env:
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-          CLUSTER_NAME: ${{ inputs.ECS_CLUSTER }}
-          SERVICE_NAME: ${{ inputs.ECS_SERVICE }}
-          TASK_DEFINITION: ${{ inputs.TASK_NAME }}
-          IMAGE_URI: ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.IMAGE_NAME }}:latest
-        run: |
-          # Obter a task definition atual
-          TASK_DEFINITION_ARN=$(aws ecs describe-task-definition \
-            --task-definition $TASK_DEFINITION \
-            --query "taskDefinition.taskDefinitionArn" \
-            --output text)
-
-          # Criar nova task definition com a nova imagem
-          NEW_TASK_DEFINITION=$(aws ecs register-task-definition \
-            --family $TASK_DEFINITION \
-            --container-definitions "[{\"name\":\"${{ inputs.TASK_NAME }}\",\"image\":\"$IMAGE_URI\",\"essential\":true,\"memory\":512,\"cpu\":256,\"portMappings\":[{\"containerPort\":3000,\"hostPort\":3000,\"protocol\":\"tcp\"}]}]" \
-            --query "taskDefinition.taskDefinitionArn" \
-            --output text)
-
-          # Atualizar o serviço ECS com a nova task definition
-          aws ecs update-service \
-            --cluster $CLUSTER_NAME \
-            --service $SERVICE_NAME \
-            --task-definition $NEW_TASK_DEFINITION
+---
+  name: Deploy
+  
+  on:
+    workflow_call:
+      inputs:
+        IMAGE_NAME:
+          required: true
+          type: string
+        TASK_NAME:
+          required: true
+          type: string
+        CONTAINER_NAME:
+          required: true
+          type: string
+        ECS_SERVICE:
+          required: true
+          type: string
+        ECS_CLUSTER:
+          required: true
+          type: string
+      secrets:
+        AWS_ACCESS_KEY_ID:
+          required: true
+        AWS_SECRET_ACCESS_KEY:
+          required: true
+        AWS_REGION:
+          required: true
+  
+  env:
+    IMAGE_NAME: ${{ inputs.IMAGE_NAME }}
+    TASK_NAME: ${{ inputs.TASK_NAME }}
+    CONTAINER_NAME: ${{ inputs.CONTAINER_NAME }}
+    ECS_SERVICE: ${{ inputs.ECS_SERVICE }}
+    ECS_CLUSTER: ${{ inputs.ECS_CLUSTER }}
+  
+  jobs:
+    deploy:    
+      name: Deploy
+      runs-on: ubuntu-latest
+      
+      steps:
+        # 1. Checkout do código
+        - name: Checkout
+          uses: actions/checkout@v3
+  
+        # 2. Configurar as credenciais da AWS
+        - name: Configure AWS credentials
+          uses: aws-actions/configure-aws-credentials@v2
+          with:
+            aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+            aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            aws-region: ${{ secrets.AWS_REGION }}
+            
+        # 3. Baixar a definição de tarefa atual do ECS
+        - name: Download task definition
+          run: |
+            aws ecs describe-task-definition --task-definition $TASK_NAME --query taskDefinition > task-definition.json
+        
+        # 4. Login no Amazon ECR
+        - name: Login ECR
+          id: login-ecr-deploy
+          uses: aws-actions/amazon-ecr-login@v1
+  
+        # 5. Extrair metadados (tags, labels) para Docker
+        - name: Extract metadata (tags, labels) for Docker
+          id: metadata
+          uses: docker/metadata-action@v4
+          env:
+            TAG_SHA: ${{ github.sha }}
+          with:
+            images: ${{ steps.login-ecr-deploy.outputs.registry }}/${{ env.IMAGE_NAME }}
+            tags: |
+              latest
+              ${{ env.TAG_SHA }}
+  
+        # 6. Atualizar a definição da task ECS
+        - name: Update ECS task definition
+          id: task-def
+          uses: aws-actions/amazon-ecs-render-task-definition@v1
+          with:
+            task-definition: task-definition.json
+            container-name: ${{ env.CONTAINER_NAME }}
+            image: ${{ steps.metadata.outputs.tags }}
+  
+        # 7. Fazer o deploy da task definition atualizada no ECS
+        - name: Deploy Amazon ECS task definition
+          uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+          with:
+            task-definition: ${{ steps.task-def.outputs.task-definition }}
+            service: ${{ env.ECS_SERVICE }}
+            cluster: ${{ env.ECS_CLUSTER }}
+            wait-for-service-stability: true
+            force-new-deployment: true
+  
