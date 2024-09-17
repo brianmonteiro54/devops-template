@@ -23,11 +23,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout do código
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # 2. Configurar as credenciais da AWS
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -35,16 +33,15 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # 3. Login no Amazon ECR
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
+        with:
+          mask-password: true  # Máscara de senha ativada
 
-      # 4. Configurar o Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      # 5. Extrair metadados (tags e labels) para Docker
       - name: Extract metadata (tags, labels) for Docker
         id: metadata
         uses: docker/metadata-action@v4
@@ -54,7 +51,6 @@ jobs:
             latest
             ${{ github.sha }}
 
-      # 6. Build e push da imagem Docker
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:

@@ -1,95 +1,89 @@
----
-  name: Deploy
-  
-  on:
-    workflow_call:
-      inputs:
-        IMAGE_NAME:
-          required: true
-          type: string
-        TASK_NAME:
-          required: true
-          type: string
-        CONTAINER_NAME:
-          required: true
-          type: string
-        ECS_SERVICE:
-          required: true
-          type: string
-        ECS_CLUSTER:
-          required: true
-          type: string
-      secrets:
-        AWS_ACCESS_KEY_ID:
-          required: true
-        AWS_SECRET_ACCESS_KEY:
-          required: true
-        AWS_REGION:
-          required: true
-  
-  env:
-    IMAGE_NAME: ${{ inputs.IMAGE_NAME }}
-    TASK_NAME: ${{ inputs.TASK_NAME }}
-    CONTAINER_NAME: ${{ inputs.CONTAINER_NAME }}
-    ECS_SERVICE: ${{ inputs.ECS_SERVICE }}
-    ECS_CLUSTER: ${{ inputs.ECS_CLUSTER }}
-  
-  jobs:
-    deploy:
-      name: Deploy
-      runs-on: ubuntu-latest
-  
-      steps:
-        # 1. Checkout do código
-        - name: Checkout
-          uses: actions/checkout@v3
-  
-        # 2. Configurar as credenciais da AWS
-        - name: Configure AWS credentials
-          uses: aws-actions/configure-aws-credentials@v2
-          with:
-            aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-            aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-            aws-region: ${{ secrets.AWS_REGION }}
-  
-        # 3. Baixar a definição de tarefa atual do ECS
-        - name: Download task definition
-          run: |
-            aws ecs describe-task-definition --task-definition $TASK_NAME --query taskDefinition > task-definition.json
-  
-        # 4. Login no Amazon ECR
-        - name: Login ECR
-          id: login-ecr-deploy
-          uses: aws-actions/amazon-ecr-login@v1
-  
-        # 5. Extrair metadados (tags, labels) para Docker
-        - name: Extract metadata (tags, labels) for Docker
-          id: metadata
-          uses: docker/metadata-action@v4
-          env:
-            TAG_SHA: ${{ github.sha }}
-          with:
-            images: ${{ steps.login-ecr-deploy.outputs.registry }}/${{ env.IMAGE_NAME }}
-            tags: |
-              latest
-              ${{ env.TAG_SHA }}
-  
-        # 6. Atualizar a definição da task ECS com apenas a primeira tag
-        - name: Update ECS task definition
-          id: task-def
-          uses: aws-actions/amazon-ecs-render-task-definition@v1
-          with:
-            task-definition: task-definition.json
-            container-name: ${{ env.CONTAINER_NAME }}
-            image: ${{ fromJSON(steps.metadata.outputs.json).tags[0] }}  # Passa apenas a primeira tag (latest)
-  
-        # 7. Fazer o deploy da task definition atualizada no ECS
-        - name: Deploy Amazon ECS task definition
-          uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-          with:
-            task-definition: ${{ steps.task-def.outputs.task-definition }}
-            service: ${{ env.ECS_SERVICE }}
-            cluster: ${{ env.ECS_CLUSTER }}
-            wait-for-service-stability: true
-            force-new-deployment: true
-  
+name: Deploy
+
+on:
+  workflow_call:
+    inputs:
+      IMAGE_NAME:
+        required: true
+        type: string
+      TASK_NAME:
+        required: true
+        type: string
+      CONTAINER_NAME:
+        required: true
+        type: string
+      ECS_SERVICE:
+        required: true
+        type: string
+      ECS_CLUSTER:
+        required: true
+        type: string
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+      AWS_REGION:
+        required: true
+
+env:
+  IMAGE_NAME: ${{ inputs.IMAGE_NAME }}
+  TASK_NAME: ${{ inputs.TASK_NAME }}
+  CONTAINER_NAME: ${{ inputs.CONTAINER_NAME }}
+  ECS_SERVICE: ${{ inputs.ECS_SERVICE }}
+  ECS_CLUSTER: ${{ inputs.ECS_CLUSTER }}
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Download task definition
+        run: |
+          aws ecs describe-task-definition --task-definition $TASK_NAME --query taskDefinition > task-definition.json
+          jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .registeredAt, .registeredBy, .compatibilities)' task-definition.json > cleaned-task-definition.json
+
+      - name: Login ECR
+        id: login-ecr-deploy
+        uses: aws-actions/amazon-ecr-login@v1
+        with:
+          mask-password: true
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: metadata
+        uses: docker/metadata-action@v4
+        env:
+          TAG_SHA: ${{ github.sha }}
+        with:
+          images: ${{ steps.login-ecr-deploy.outputs.registry }}/${{ env.IMAGE_NAME }}
+          tags: |
+            latest
+            ${{ env.TAG_SHA }}
+
+      - name: Update ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: cleaned-task-definition.json
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ fromJSON(steps.metadata.outputs.json).tags[0] }}
+
+      - name: Deploy Amazon ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+          force-new-deployment: true
