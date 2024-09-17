@@ -1,54 +1,56 @@
-    name: Bundle
-    
-    on:
-      workflow_call:
-        inputs:
-          IMAGE_NAME:
-            required: true
-            type: string
-          TASK_NAME:
-            required: true
-            type: string
-          CONTAINER_NAME:
-            required: true
-            type: string
-          ECS_SERVICE:
-            required: true
-            type: string
-          ECS_CLUSTER:
-            required: true
-            type: string
-        secrets:
-          AWS_ACCESS_KEY_ID:
-            required: true
-          AWS_SECRET_ACCESS_KEY:
-            required: true
-          AWS_REGION:
-            required: true
-    
-    jobs:
-      build:
-        name: build
-        uses: ./.github/workflows/build.yml
-        with:
-          IMAGE_NAME: ${{ inputs.IMAGE_NAME }}
-        secrets:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-    
-      deploy:
-        name: deploy
-        uses: ./.github/workflows/deploy.yml
-        needs: build
-        with:
-          IMAGE_NAME: ${{ inputs.IMAGE_NAME }}
-          TASK_NAME: ${{ inputs.TASK_NAME }}
-          CONTAINER_NAME: ${{ inputs.CONTAINER_NAME }}
-          ECS_SERVICE: ${{ inputs.ECS_SERVICE }}
-          ECS_CLUSTER: ${{ inputs.ECS_CLUSTER }}
-        secrets:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-    
+name: Bundle
+
+on:
+  workflow_call:
+    inputs:
+      IMAGE_NAME:
+        required: true
+        type: string
+      TASK_NAME:
+        required: true
+        type: string
+      CONTAINER_NAME:
+        required: true
+        type: string
+      ECS_SERVICE:
+        required: true
+        type: string
+      ECS_CLUSTER:
+        required: true
+        type: string
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+      AWS_REGION:
+        required: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true  # Forçar Node.js 20
+
+jobs:
+  build:
+    name: build
+    uses: ./.github/workflows/build.yml
+    with:
+      IMAGE_NAME: ${{ inputs.IMAGE_NAME }}
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+
+  deploy:
+    name: deploy
+    uses: ./.github/workflows/deploy.yml
+    needs: build
+    with:
+      IMAGE_NAME: ${{ inputs.IMAGE_NAME }}
+      TASK_NAME: ${{ inputs.TASK_NAME }}
+      CONTAINER_NAME: ${{ inputs.CONTAINER_NAME }}
+      ECS_SERVICE: ${{ inputs.ECS_SERVICE }}
+      ECS_CLUSTER: ${{ inputs.ECS_CLUSTER }}
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}

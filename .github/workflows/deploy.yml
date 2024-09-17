@@ -32,6 +32,7 @@ env:
   CONTAINER_NAME: ${{ inputs.CONTAINER_NAME }}
   ECS_SERVICE: ${{ inputs.ECS_SERVICE }}
   ECS_CLUSTER: ${{ inputs.ECS_CLUSTER }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true  # Forçar Node.js 20
 
 jobs:
   deploy:
@@ -43,7 +44,7 @@ jobs:
         uses: actions/checkout@v3  # Compatível com Node.js 20
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2  # Já compatível
+        uses: aws-actions/configure-aws-credentials@v2  # Já compatível com Node.js 20
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -57,6 +58,8 @@ jobs:
       - name: Login ECR
         id: login-ecr-deploy
         uses: aws-actions/amazon-ecr-login@v2  # Atualizado para a versão 2
+        with:
+          mask-password: true  # Máscara de senha
 
       - name: Extract metadata (tags, labels) for Docker
         id: metadata
