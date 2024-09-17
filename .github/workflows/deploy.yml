@@ -40,10 +40,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v3  # Compatível com Node.js 20
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v2  # Já compatível
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -56,13 +56,11 @@ jobs:
 
       - name: Login ECR
         id: login-ecr-deploy
-        uses: aws-actions/amazon-ecr-login@v1
-        with:
-          mask-password: true
+        uses: aws-actions/amazon-ecr-login@v2  # Atualizado para a versão 2
 
       - name: Extract metadata (tags, labels) for Docker
         id: metadata
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v4  # Atualizado
         env:
           TAG_SHA: ${{ github.sha }}
         with:
