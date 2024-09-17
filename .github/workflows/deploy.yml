@@ -62,16 +62,6 @@
           id: login-ecr-deploy
           uses: aws-actions/amazon-ecr-login@v1
   
-        # Debug step to check variables and outputs
-        - name: Debug environment variables and metadata
-          run: |
-            echo "IMAGE_NAME: ${{ env.IMAGE_NAME }}"
-            echo "TASK_NAME: ${{ env.TASK_NAME }}"
-            echo "CONTAINER_NAME: ${{ env.CONTAINER_NAME }}"
-            echo "ECS_SERVICE: ${{ env.ECS_SERVICE }}"
-            echo "ECS_CLUSTER: ${{ env.ECS_CLUSTER }}"
-            echo "Metadata tags: ${{ steps.metadata.outputs.tags }}"
-  
         # 5. Extrair metadados (tags, labels) para Docker
         - name: Extract metadata (tags, labels) for Docker
           id: metadata
@@ -92,6 +82,10 @@
             task-definition: task-definition.json
             container-name: ${{ env.CONTAINER_NAME }}
             image: ${{ steps.metadata.outputs.tags }}
+  
+        # **Step de Debug para Task Definition Renderizada**
+        - name: Print rendered task definition
+          run: cat task-definition.json
   
         # 7. Fazer o deploy da task definition atualizada no ECS
         - name: Deploy Amazon ECS task definition
