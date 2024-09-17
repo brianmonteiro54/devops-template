@@ -35,10 +35,10 @@
     ECS_CLUSTER: ${{ inputs.ECS_CLUSTER }}
   
   jobs:
-    deploy:    
+    deploy:
       name: Deploy
       runs-on: ubuntu-latest
-      
+  
       steps:
         # 1. Checkout do código
         - name: Checkout
@@ -51,12 +51,12 @@
             aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
             aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
             aws-region: ${{ secrets.AWS_REGION }}
-            
+  
         # 3. Baixar a definição de tarefa atual do ECS
         - name: Download task definition
           run: |
             aws ecs describe-task-definition --task-definition $TASK_NAME --query taskDefinition > task-definition.json
-        
+  
         # 4. Login no Amazon ECR
         - name: Login ECR
           id: login-ecr-deploy
@@ -74,14 +74,14 @@
               latest
               ${{ env.TAG_SHA }}
   
-        # 6. Atualizar a definição da task ECS
+        # 6. Atualizar a definição da task ECS com apenas a primeira tag
         - name: Update ECS task definition
           id: task-def
           uses: aws-actions/amazon-ecs-render-task-definition@v1
           with:
             task-definition: task-definition.json
             container-name: ${{ env.CONTAINER_NAME }}
-            image: ${{ steps.metadata.outputs.tags[0] }}
+            image: ${{ fromJSON(steps.metadata.outputs.json).tags[0] }}  # Passa apenas a primeira tag (latest)
   
         # **Step de Debug para Task Definition Renderizada**
         - name: Print rendered task definition
