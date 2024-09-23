@@ -52,15 +52,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Write PEM file
-        run: |
-          echo "${{ secrets.US_EAST_1_BUNDLE }}" > us-east-1-bundle.pem
-          ls -l  # Verifica se o arquivo foi criado
-
-      - name: List files in /App
-        run: |
-          ls -la /App  # Lista arquivos no diretório de trabalho
-
       - name: Download task definition
         run: |
           aws ecs describe-task-definition --task-definition $TASK_NAME --query taskDefinition > task-definition.json
