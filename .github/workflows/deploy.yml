@@ -53,7 +53,13 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Write PEM file
-        run: echo "${{ secrets.US_EAST_1_BUNDLE }}" > us-east-1-bundle.pem
+        run: |
+          echo "${{ secrets.US_EAST_1_BUNDLE }}" > us-east-1-bundle.pem
+          ls -l  # Verifica se o arquivo foi criado
+
+      - name: List files in /App
+        run: |
+          ls -la /App  # Lista arquivos no diretório de trabalho
 
       - name: Download task definition
         run: |
@@ -92,4 +98,4 @@ jobs:
           service: ${{ env.ECS_SERVICE }}
           cluster: ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: true
-          force-new-deployment: true
+          force-new-deployment: true" 
