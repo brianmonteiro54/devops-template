@@ -37,9 +37,15 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Write PEM file
-        run: |
-          echo "${{ secrets.US_EAST_1_BUNDLE }}" > us-east-1-bundle.pem
-          ls -l  # Verifica se o arquivo foi criado
+        run: echo "${{ secrets.US_EAST_1_BUNDLE_BASE64 }}" | base64 -d > us-east-1-bundle.pem
+
+      - name: Set file permissions for PEM file
+        run: chmod 600 us-east-1-bundle.pem
+
+      - name: Verify PEM file
+        run: ls -l us-east-1-bundle.pem
+      
+
 
       - name: Login to Amazon ECR
         id: login-ecr
