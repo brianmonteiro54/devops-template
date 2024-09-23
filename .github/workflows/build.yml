@@ -13,6 +13,8 @@ on:
         required: true
       AWS_REGION:
         required: true
+      US_EAST_1_BUNDLE:  # Adicionando o segredo para o certificado
+        required: false
 
 env:
   IMAGE_NAME: ${{ inputs.IMAGE_NAME }}
