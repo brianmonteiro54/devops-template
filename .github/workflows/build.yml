@@ -43,11 +43,6 @@ jobs:
       - name: Set file permissions for PEM file
         run: chmod 600 us-east-1-bundle.pem
 
-      - name: Verify PEM file
-        run: ls -l us-east-1-bundle.pem
-      
-
-
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2  # Atualizado para a versão 2
