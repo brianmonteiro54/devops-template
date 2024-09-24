@@ -37,10 +37,8 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Write PEM file
-        run: echo "${{ secrets.US_EAST_1_BUNDLE }}" | sed 's/\\n//g' > us-east-1-bundle.pem
+        run: printf "%b" "${{ secrets.US_EAST_1_BUNDLE }}" > us-east-1-bundle.pem
         
-
-
 
       - name: Set file permissions for PEM file
         run: chmod 600 us-east-1-bundle.pem
