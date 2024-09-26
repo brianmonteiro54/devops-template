@@ -65,28 +65,26 @@ jobs:
 
       - name: Extract metadata (tags, labels) for Docker
         id: metadata
-        uses: docker/metadata-action@v4  # Atualizado
+        uses: docker/metadata-action@v4
         env:
           TAG_SHA: ${{ github.sha }}
         with:
           images: ${{ steps.login-ecr-deploy.outputs.registry }}/${{ env.IMAGE_NAME }}
-          tags: |
-            latest
-            ${{ env.TAG_SHA }}
-
+          tags: ${{ env.TAG_SHA }}
+  
       - name: Update ECS task definition
         id: task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: cleaned-task-definition.json
+          task-definition: task-definition.json
           container-name: ${{ env.CONTAINER_NAME }}
-          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.IMAGE_NAME }}:${{ env.image-sha }}  # Usando o SHA da imagem
-          
-          
+          image: ${{ steps.metadata.outputs.tags }}
+  
       - name: Deploy Amazon ECS task definition
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
           service: ${{ env.ECS_SERVICE }}
           cluster: ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: true
+          force-new-deployment: true
