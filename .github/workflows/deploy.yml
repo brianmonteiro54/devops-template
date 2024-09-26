@@ -80,7 +80,7 @@ jobs:
         with:
           task-definition: cleaned-task-definition.json
           container-name: ${{ env.CONTAINER_NAME }}
-          image: ${{ steps.metadata.outputs.json.images[0] }}  # A primeira imagem após o build
+          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.IMAGE_NAME }}:latest  # Ou a tag desejada
 
 
       - name: Deploy Amazon ECS task definition
