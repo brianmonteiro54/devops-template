@@ -80,7 +80,8 @@ jobs:
         with:
           task-definition: cleaned-task-definition.json
           container-name: ${{ env.CONTAINER_NAME }}
-          image: ${{ fromJSON(steps.metadata.outputs.json).tags[0] }}
+          image: ${{ steps.metadata.outputs.json.images[0] }}  # A primeira imagem após o build
+
 
       - name: Deploy Amazon ECS task definition
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
