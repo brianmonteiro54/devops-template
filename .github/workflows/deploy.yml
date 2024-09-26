@@ -80,14 +80,11 @@ jobs:
         with:
           task-definition: cleaned-task-definition.json
           container-name: ${{ env.CONTAINER_NAME }}
-          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.IMAGE_NAME }}:latest  # Ou a tag desejada
-
-
-      - name: Deploy Amazon ECS task definition
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.IMAGE_NAME }}:latest  # Certifique-se de que a URI está correta
+          
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-update-service@v1
         with:
-          task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: ${{ env.ECS_SERVICE }}
           cluster: ${{ env.ECS_CLUSTER }}
-          wait-for-service-stability: true
-          force-new-deployment: true" 
+          service: ${{ env.ECS_SERVICE }}
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
