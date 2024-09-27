@@ -37,9 +37,11 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Write PEM file
+        if: github.event.inputs.US_EAST_1_BUNDLE != ''
         run: printf "%b" "${{ secrets.US_EAST_1_BUNDLE }}" > us-east-1-bundle.pem
 
-      - name: Set file permissions for PEM file
+      - name: Set file permissions for PEM file 
+        if: github.event.inputs.US_EAST_1_BUNDLE != ''
         run: chmod 600 us-east-1-bundle.pem
 
       - name: Login to Amazon ECR
