@@ -25,7 +25,7 @@ on:
         required: true
       AWS_REGION:
         required: true
-      US_EAST_1_BUNDLE:
+      PRIVATE_KEY:
         required: false  # Adicionando o segredo
 
 env:
@@ -41,7 +41,7 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_REGION: ${{ secrets.AWS_REGION }}
-      US_EAST_1_BUNDLE: ${{ secrets.US_EAST_1_BUNDLE }}  # Passando o segredo para build.yml
+      PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}  # Passando o segredo para build.yml
 
   deploy:
     name: deploy
@@ -57,4 +57,4 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_REGION: ${{ secrets.AWS_REGION }}
-      US_EAST_1_BUNDLE: ${{ secrets.US_EAST_1_BUNDLE }}  
+      PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}  

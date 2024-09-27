@@ -25,7 +25,7 @@ on:
         required: true
       AWS_REGION:
         required: true
-      US_EAST_1_BUNDLE:
+      PRIVATE_KEY:
         required: false  # Adicionando o certificado
 
 env:

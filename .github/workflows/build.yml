@@ -13,7 +13,7 @@ on:
         required: true
       AWS_REGION:
         required: true
-      US_EAST_1_BUNDLE:
+      PRIVATE_KEY:
         required: false
 
 env:
@@ -36,12 +36,23 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Write PEM file
-        if: ${{ secrets.US_EAST_1_BUNDLE != '' }}
-        run: printf "%b" "${{ secrets.US_EAST_1_BUNDLE }}" > us-east-1-bundle.pem
+      - name: Check if PRIVATE_KEY is set
+        id: check-private_key
+        run: |
+          if [ -z "${{ secrets.PRIVATE_KEY }}" ]; then
+            echo "PRIVATE_KEY is not set."
+            echo "check_private=false" >> $GITHUB_ENV
+          else
+            echo "PRIVATE_KEY is set."
+            echo "check_private=true" >> $GITHUB_ENV
+          fi
 
-      - name: Set file permissions for PEM file 
-        if: ${{ secrets.US_EAST_1_BUNDLE != '' }}
+      - name: Write PEM file
+        if: env.check_private == 'true'
+        run: printf "%b" "${{ secrets.PRIVATE_KEY }}" > us-east-1-bundle.pem
+
+      - name: Set file permissions for PEM file
+        if: env.check_private == 'true'
         run: chmod 600 us-east-1-bundle.pem
 
       - name: Login to Amazon ECR
