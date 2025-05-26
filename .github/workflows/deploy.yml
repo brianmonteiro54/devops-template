@@ -19,9 +19,7 @@ on:
         required: true
         type: string
     secrets:
-      AWS_ACCESS_KEY_ID:
-        required: true
-      AWS_SECRET_ACCESS_KEY:
+      AWS_ASSUME_ROLE_ARN:
         required: true
       AWS_REGION:
         required: true
@@ -46,10 +44,10 @@ jobs:
         uses: actions/checkout@v3  # Compatível com Node.js 20
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2  # Já compatível com Node.js 20
+        uses: aws-actions/configure-aws-credentials@v4  
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ secrets.AWS_ASSUME_ROLE_ARN }}
+          role-session-name: GitHub_to_AWS_via_FederatedOIDC
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Download task definition
