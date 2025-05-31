@@ -42,10 +42,30 @@ Antes de rodar este pipeline, é necessário ter configurado:
    - Acessar o **ECR** para armazenar imagens Docker.
    - Fazer deploy no **ECS**.
 2. **GitHub Secrets** para armazenar credenciais seguras:
-   - `AWS_ACCESS_KEY_ID`
-   - `AWS_SECRET_ACCESS_KEY`
+   - `AWS_ASSUME_ROLE_ARN`
    - `AWS_REGION`
    - `PRIVATE_KEY` (opcional).
+
+3. **terraform.yml**: Workflow para provisionamento da infraestrutura usando Terraform.  
+   Pode ser reutilizado por outros workflows para garantir que a infraestrutura esteja provisionada antes do deploy da aplicação. Recebe parâmetros como ambiente (dev, prod) e bucket S3 para o statefile do Terraform.
+
+## Uso do terraform.yml em outros repositórios
+
+Este workflow pode ser chamado por outros repositórios através do uso da ação `workflow_call` ou via `uses` apontando para este repositório template, permitindo a reutilização centralizada do código de provisionamento de infraestrutura.
+
+### Exemplo de uso em workflow externo:
+
+```yaml
+jobs:
+  terraform:
+    uses: brianmonteiro54/devops-template/.github/workflows/terraform.yml@main
+    with:
+      environment: dev
+      aws-statefile-s3-bucket: "brian-terraform"
+    secrets:
+      AWS_ASSUME_ROLE_ARN: ${{ secrets.AWS_ASSUME_ROLE_ARN }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+
 
 Para configurar essas credenciais, acesse o repositório no GitHub e vá em **Settings > Secrets and variables > Actions**. Adicione as variáveis de ambiente necessárias.
 
@@ -74,7 +94,6 @@ jobs:
       ECS_SERVICE: api-production
       ECS_CLUSTER: production
     secrets:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_ASSUME_ROLE_ARN: ${{ secrets.AWS_ASSUME_ROLE_ARN }}
       AWS_REGION: ${{ secrets.AWS_REGION }}
       PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
