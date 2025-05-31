@@ -60,7 +60,7 @@ jobs:
   terraform:
     uses: brianmonteiro54/devops-template/.github/workflows/terraform.yml@main
     with:
-      environment: dev
+      environment: prod
       aws-statefile-s3-bucket: "brian-terraform"
     secrets:
       AWS_ASSUME_ROLE_ARN: ${{ secrets.AWS_ASSUME_ROLE_ARN }}
