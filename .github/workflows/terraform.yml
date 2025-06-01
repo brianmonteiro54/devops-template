@@ -48,7 +48,7 @@ jobs:
         run: |
           cd infra && terraform init \
             -backend-config="bucket=${{ inputs.aws-statefile-s3-bucket }}" \
-            -backend-config="key=${{ github.event.repository.name }}" \
+            -backend-config="key=${{ github.event.repository.name }}.tfstate" \
             -backend-config="region=${{ secrets.AWS_REGION }}" \
 
 
