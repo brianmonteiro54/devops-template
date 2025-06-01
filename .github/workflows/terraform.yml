@@ -21,7 +21,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        
+
     outputs:
       destroy_active: ${{ steps.read-destroy-config.outputs.destroy }}
 
@@ -45,7 +45,7 @@ jobs:
         id: read-destroy-config
         run: |
           DESTROY="$(jq -r '.${{ inputs.environment }}' ./infra/destroy_config.json)"
-          echo "destroy=$(echo $DESTROY)" >> $GITHUB_OUTPUT
+          echo "destroy=$DESTROY" >> $GITHUB_OUTPUT
 
       - name: Terraform Init
         run: |
