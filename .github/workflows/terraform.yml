@@ -21,6 +21,9 @@ jobs:
     defaults:
       run:
         shell: bash
+        
+    outputs:
+      destroy_active: ${{ steps.read-destroy-config.outputs.destroy }}
 
     steps:
       - name: Checkout code
