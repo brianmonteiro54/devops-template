@@ -14,6 +14,10 @@ on:
         required: true
       AWS_REGION:
         required: true
+    outputs:
+      destroy_active:
+        description: "Indicates if a destroy operation was performed"
+        value: ${{ jobs.terraform.outputs.destroy_active }}
 
 jobs:
   terraform:
