@@ -1,0 +1,421 @@
+# =============================================================================
+# Reusable Terraform CD Pipeline
+# Repo: brianmonteiro54/devops-template
+# Path: .github/workflows/terraform-cd.yml
+# =============================================================================
+
+name: Terraform CD (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      terraform-version:
+        required: false
+        type: string
+        default: '1.10.5'
+      aws-region:
+        required: false
+        type: string
+        default: 'us-east-1'
+      env-name:
+        required: true
+        type: string
+      tfvars-path:
+        required: true
+        type: string
+      backend-path:
+        required: true
+        type: string
+      is-drift-check:
+        required: false
+        type: boolean
+        default: false
+      force-apply:
+        required: false
+        type: boolean
+        default: false
+      reason:
+        required: false
+        type: string
+        default: ''
+      checkout-ref:
+        required: false
+        type: string
+        default: ''
+
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+      AWS_SESSION_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+  actions: read
+
+# =============================================================================
+# Job 1: Terraform Plan
+# =============================================================================
+jobs:
+  plan:
+    name: Plan (${{ inputs.env-name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      has_changes: ${{ steps.plan.outputs.has_changes }}
+      plan_summary: ${{ steps.stats.outputs.summary }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout-ref || github.sha }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Verify AWS identity
+        run: |
+          IDENTITY=$(aws sts get-caller-identity --output json)
+          echo "AWS Identity: $(echo "$IDENTITY" | jq -r '.Arn')"
+          echo "Account: $(echo "$IDENTITY" | jq -r '.Account')"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+          terraform_wrapper: false
+
+      - name: Cache Terraform providers
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.terraform.d/plugin-cache
+            **/.terraform/providers
+          key: tf-providers-${{ runner.os }}-${{ hashFiles('**/.terraform.lock.hcl') }}
+          restore-keys: tf-providers-${{ runner.os }}-
+
+      - name: Configure Terraform plugin cache
+        run: |
+          mkdir -p ~/.terraform.d/plugin-cache
+          echo 'plugin_cache_dir = "$HOME/.terraform.d/plugin-cache"' > ~/.terraformrc
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="${{ inputs.backend-path }}" \
+            -reconfigure -input=false -no-color
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          set +e
+          terraform plan \
+            -var-file="${{ inputs.tfvars-path }}" \
+            -out=tfplan \
+            -detailed-exitcode -input=false -no-color 2>&1 | tee plan_output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          case $EXIT_CODE in
+            0) echo "has_changes=false" >> "$GITHUB_OUTPUT" ;;
+            1) echo "has_changes=false" >> "$GITHUB_OUTPUT"; exit 1 ;;
+            2) echo "has_changes=true"  >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Extract plan statistics
+        id: stats
+        if: always()
+        run: |
+          if [[ ! -f plan_output.txt ]]; then
+            echo "summary=Plan falhou" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          ADDED=$(grep -oP '\d+(?= to add)' plan_output.txt | tail -1 || echo 0)
+          CHANGED=$(grep -oP '\d+(?= to change)' plan_output.txt | tail -1 || echo 0)
+          DESTROYED=$(grep -oP '\d+(?= to destroy)' plan_output.txt | tail -1 || echo 0)
+          echo "summary=+${ADDED:-0} ~${CHANGED:-0} -${DESTROYED:-0}" >> "$GITHUB_OUTPUT"
+          if [[ "${DESTROYED:-0}" -gt 0 && "${{ inputs.env-name }}" == "prod" ]]; then
+            echo "::warning::⚠️ Plan inclui ${DESTROYED} destruições em PRODUÇÃO!"
+          fi
+
+      - name: Generate plan summary
+        if: always()
+        run: |
+          ENV="${{ inputs.env-name }}"
+          {
+            echo "### 📋 Terraform Plan — \`${ENV}\`"
+            echo ""
+            if [[ -f plan_output.txt ]]; then
+              ADDED=$(grep -oP '\d+(?= to add)' plan_output.txt | tail -1 || echo 0)
+              CHANGED=$(grep -oP '\d+(?= to change)' plan_output.txt | tail -1 || echo 0)
+              DESTROYED=$(grep -oP '\d+(?= to destroy)' plan_output.txt | tail -1 || echo 0)
+              echo "| Ação | Qtd |"
+              echo "|------|-----|"
+              echo "| ➕ Add | **${ADDED:-0}** |"
+              echo "| 🔄 Change | **${CHANGED:-0}** |"
+              echo "| 🔴 Destroy | **${DESTROYED:-0}** |"
+              echo ""
+              echo "<details><summary>Ver plano completo</summary>"
+              echo '```hcl'
+              cat plan_output.txt
+              echo '```'
+              echo "</details>"
+            else
+              echo "❌ Plan falhou."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload plan artifact
+        if: steps.plan.outputs.has_changes == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ inputs.env-name }}-${{ github.sha }}
+          path: |
+            tfplan
+            plan_output.txt
+          retention-days: 1
+
+# =============================================================================
+# Job 2: Drift Alert (drift check only)
+# =============================================================================
+  drift-alert:
+    name: Drift Alert (${{ inputs.env-name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: plan
+    if: inputs.is-drift-check && needs.plan.outputs.has_changes == 'true'
+
+    steps:
+      - name: Alert drift detected
+        run: |
+          echo "::warning::🔀 DRIFT detectado em '${{ inputs.env-name }}': ${{ needs.plan.outputs.plan_summary }}"
+
+      - name: Drift summary
+        run: |
+          {
+            echo "### 🔀 Drift Detection — \`${{ inputs.env-name }}\`"
+            echo ""
+            echo "**Drift detectado!** Mudanças: \`${{ needs.plan.outputs.plan_summary }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+# =============================================================================
+# Job 3: Terraform Apply
+# =============================================================================
+  apply:
+    name: Apply (${{ inputs.env-name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: plan
+    if: >-
+      !inputs.is-drift-check &&
+      (needs.plan.outputs.has_changes == 'true' || inputs.force-apply)
+    environment: deploy-${{ inputs.env-name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout-ref || github.sha }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Verify AWS identity
+        run: |
+          IDENTITY=$(aws sts get-caller-identity --output json)
+          echo "AWS Identity: $(echo "$IDENTITY" | jq -r '.Arn')"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+          terraform_wrapper: false
+
+      - name: Cache Terraform providers
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.terraform.d/plugin-cache
+            **/.terraform/providers
+          key: tf-providers-${{ runner.os }}-${{ hashFiles('**/.terraform.lock.hcl') }}
+          restore-keys: tf-providers-${{ runner.os }}-
+
+      - name: Configure Terraform plugin cache
+        run: |
+          mkdir -p ~/.terraform.d/plugin-cache
+          echo 'plugin_cache_dir = "$HOME/.terraform.d/plugin-cache"' > ~/.terraformrc
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="${{ inputs.backend-path }}" \
+            -reconfigure -input=false -no-color
+
+      - name: Download plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-${{ inputs.env-name }}-${{ github.sha }}
+
+      - name: Backup current state
+        id: backup
+        run: |
+          BACKUP_FILE="state-backup-${{ inputs.env-name }}-$(date -u '+%Y%m%d-%H%M%S').json"
+          terraform state pull > "$BACKUP_FILE" 2>/dev/null || true
+          if [[ -s "$BACKUP_FILE" ]]; then
+            echo "backup_file=$BACKUP_FILE" >> "$GITHUB_OUTPUT"
+          else
+            echo "backup_file=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload state backup
+        if: steps.backup.outputs.backup_file != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: state-backup-${{ inputs.env-name }}-${{ github.sha }}
+          path: ${{ steps.backup.outputs.backup_file }}
+          retention-days: 90
+
+      - name: Terraform Apply
+        id: apply
+        run: |
+          echo "══════════════════════════════════════════════════"
+          echo "  🚀 TERRAFORM APPLY — ${{ inputs.env-name }}"
+          echo "  Aprovado: ${{ github.actor }}"
+          echo "══════════════════════════════════════════════════"
+
+          set +e
+          terraform apply -auto-approve -input=false -no-color tfplan 2>&1 | tee apply_output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "exitcode=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+          if [[ "$EXIT_CODE" != "0" ]]; then exit 1; fi
+
+      - name: Apply summary
+        if: always()
+        run: |
+          EXIT="${{ steps.apply.outputs.exitcode }}"
+          STATUS=$([[ "$EXIT" == "0" ]] && echo "✅ Sucesso" || echo "❌ Falhou")
+          {
+            echo "### 🚀 Apply — \`${{ inputs.env-name }}\` — $STATUS"
+            echo ""
+            echo "| Campo | Valor |"
+            echo "|-------|-------|"
+            echo "| Ambiente | \`${{ inputs.env-name }}\` |"
+            echo "| Aprovado | \`${{ github.actor }}\` |"
+            echo "| Commit | \`${{ github.sha }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload apply output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apply-output-${{ inputs.env-name }}-${{ github.sha }}
+          path: apply_output.txt
+          retention-days: 90
+
+      - name: Terraform Outputs
+        if: steps.apply.outputs.exitcode == '0'
+        run: |
+          {
+            echo "### 📤 Terraform Outputs"
+            echo '```json'
+            terraform output -json -no-color 2>/dev/null || echo '{}'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+# =============================================================================
+# Job 4: Post-Apply Verification
+# =============================================================================
+  verify:
+    name: Verify (${{ inputs.env-name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: apply
+    if: always() && needs.apply.result == 'success'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+          terraform_wrapper: false
+
+      - name: Configure Terraform plugin cache
+        run: |
+          mkdir -p ~/.terraform.d/plugin-cache
+          echo 'plugin_cache_dir = "$HOME/.terraform.d/plugin-cache"' > ~/.terraformrc
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="${{ inputs.backend-path }}" \
+            -reconfigure -input=false -no-color
+
+      - name: Post-apply drift check
+        id: verify_plan
+        run: |
+          set +e
+          terraform plan \
+            -var-file="${{ inputs.tfvars-path }}" \
+            -detailed-exitcode -input=false -no-color 2>&1 | tee verify_output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          case $EXIT_CODE in
+            0) echo "clean=true"  >> "$GITHUB_OUTPUT" ;;
+            2) echo "clean=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "clean=error" >> "$GITHUB_OUTPUT"; exit 1 ;;
+          esac
+
+      - name: Smoke tests
+        if: hashFiles('scripts/smoke-test.sh') != ''
+        run: |
+          chmod +x scripts/smoke-test.sh
+          ./scripts/smoke-test.sh "${{ inputs.env-name }}"
+
+      - name: Verification summary
+        if: always()
+        run: |
+          CLEAN="${{ steps.verify_plan.outputs.clean }}"
+          STATUS=$([[ "$CLEAN" == "true" ]] && echo "✅ Limpo" || echo "⚠️ Drift detectado")
+          echo "### 🔎 Verify — \`${{ inputs.env-name }}\` — $STATUS" >> "$GITHUB_STEP_SUMMARY"
+
+# =============================================================================
+# Job 5: Notify Failure
+# =============================================================================
+  notify-failure:
+    name: Notify Failure
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [plan, apply]
+    if: always() && (needs.plan.result == 'failure' || needs.apply.result == 'failure')
+
+    steps:
+      - name: Failure summary
+        run: |
+          {
+            echo "### 🚨 Deploy Failed — \`${{ inputs.env-name }}\`"
+            echo ""
+            echo "| Job | Resultado |"
+            echo "|-----|-----------|"
+            echo "| Plan  | \`${{ needs.plan.result }}\` |"
+            echo "| Apply | \`${{ needs.apply.result }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

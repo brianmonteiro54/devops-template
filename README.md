@@ -1,99 +1,212 @@
-# DevOps Template - AWS ECR & ECS Deployment
+# DevOps Template
+Este repositório contém templates de workflows para rodar pipelines de CI/CD no GitHub Actions.
 
-Este repositório contém templates de workflows para rodar pipelines de CI/CD no GitHub Actions, com foco em integração e entrega contínua para **Amazon Elastic Container Registry (ECR)** e **Amazon Elastic Container Service (ECS)**.
+### Terraform Pipelines
 
-## Estrutura
+#### `terraform-ci.yml` — CI Completo
 
-O repositório está estruturado para realizar **build**, **push** da imagem Docker para o ECR, e fazer o **deploy** da imagem no ECS. Ele utiliza três workflows principais:
+Pipeline de integração contínua com 6 jobs paralelos:
 
-1. **build.yml**: Responsável por construir e fazer o push da imagem Docker no ECR.
-2. **bundle.yml**: Chamado internamente para conectar os workflows de build e deploy.
-3. **deploy.yml**: Gerencia o deploy da imagem Docker para um cluster e serviço ECS.
+| Job | Função | Tipo |
+|-----|--------|------|
+| **Lint & Format** | `terraform fmt` + TFLint | 🔒 Bloqueante |
+| **Validate** | `terraform validate` | 🔒 Bloqueante |
+| **Security** | Checkov + Trivy (SARIF) | 🔒 Bloqueante |
+| **Plan Preview** | `terraform plan` por ambiente (matrix) | Informativo |
+| **Docs** | terraform-docs auto-generation | Auto-commit |
+| **CI Gate** | Avaliação final bloqueante | Gate |
 
-## Repositório de Destino
+**Inputs disponíveis:**
 
-O repositório de destino utiliza este repositório como um **template** para que o workflow de CI/CD possa ser reutilizado em diversos projetos. Isso significa que, em vez de duplicar os arquivos de workflow para cada repositório, basta referenciar o `bundle.yml` deste repositório template, o que torna o processo mais eficiente e centralizado.
+| Input | Default | Descrição |
+|-------|---------|-----------|
+| `terraform-version` | `1.10.5` | Versão do Terraform |
+| `tflint-version` | `v0.55.1` | Versão do TFLint |
+| `checkov-version` | `3.2.350` | Versão do Checkov |
+| `checkov-skip-checks` | `CKV_AWS_119,CKV_AWS_28` | Checks para ignorar |
+| `trivy-severity` | `MEDIUM,HIGH,CRITICAL` | Severidades do Trivy |
+| `aws-region` | `us-east-1` | Região AWS |
+| `terraform-docs-working-dir` | `.` | Diretório do terraform-docs |
+| `enable-plan-preview` | `true` | Habilitar plan preview em PRs |
+| `environments` | `[{"branch":"main","env_name":"prod"},...]` | Matrix de environments para plan |
 
-Se você tiver vários repositórios que compartilham a mesma estrutura de CI/CD (build e deploy para AWS ECR e ECS), o uso deste template facilita a atualização e manutenção dos pipelines. Caso seja necessário fazer alterações nos workflows, como a adição de novos passos ou melhorias no processo de build, basta modificar o repositório template, e todos os repositórios que fazem referência ao `bundle.yml` serão automaticamente atualizados.
+```yaml
+jobs:
+  ci:
+    uses: brianmonteiro54/devops-template/.github/workflows/terraform-ci.yml@main
+    with:
+      terraform-docs-working-dir: '.'
+      environments: '[{"branch":"main","env_name":"prod"},{"branch":"developer","env_name":"dev"}]'
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+```
 
-Dessa forma, você só precisa alterar as informações específicas de cada repositório de destino, como:
+#### `terraform-cd.yml` — CD Completo
 
-### Variáveis de Entrada
+Pipeline de deploy com approval gates e verificação pós-apply:
 
-No repositório de destino, você só precisa alterar as variáveis de entrada para personalizar o pipeline:
+| Job | Função |
+|-----|--------|
+| **Plan** | `terraform plan` com upload de artefato |
+| **Drift Alert** | Alerta de drift (modo plan-only) |
+| **Apply** | `terraform apply` com Environment Gate |
+| **Verify** | Drift check pós-apply + smoke tests |
+| **Notify Failure** | Summary de falha |
 
-- **`IMAGE_NAME`**: Nome da imagem Docker.
-- **`TASK_NAME`**: Nome da tarefa ECS.
-- **`CONTAINER_NAME`**: Nome do container no ECS.
-- **`ECS_SERVICE`**: Nome do serviço ECS.
-- **`ECS_CLUSTER`**: Nome do cluster ECS.
+**Inputs disponíveis:**
 
-Esses parâmetros podem variar entre os repositórios de destino, enquanto o pipeline base permanece o mesmo.
+| Input | Default | Descrição |
+|-------|---------|-----------|
+| `env-name` | _(required)_ | Ambiente alvo (dev, prod) |
+| `tfvars-path` | _(required)_ | Caminho do terraform.tfvars |
+| `backend-path` | _(required)_ | Caminho do backend.hcl |
+| `is-drift-check` | `false` | Modo drift (só plan, sem apply) |
+| `force-apply` | `false` | Forçar apply sem mudanças |
+| `reason` | `''` | Justificativa para deploy manual |
+| `checkout-ref` | `''` | Git ref para checkout |
 
-### Uso do `PRIVATE_KEY`
+```yaml
+jobs:
+  deploy:
+    uses: brianmonteiro54/devops-template/.github/workflows/terraform-cd.yml@main
+    with:
+      env-name: prod
+      tfvars-path: envs/prod/terraform.tfvars
+      backend-path: envs/prod/backend.hcl
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+```
 
-O `PRIVATE_KEY` é opcional, mas pode ser usado para armazenar um certificado necessário para acessar recursos protegidos, como servidores ou serviços externos. Caso o segredo `PRIVATE_KEY` não seja configurado no repositório de destino, o workflow ainda funcionará normalmente.
+**Drift Detection (modo plan-only):**
+
+```yaml
+jobs:
+  drift:
+    uses: brianmonteiro54/devops-template/.github/workflows/terraform-cd.yml@main
+    with:
+      env-name: prod
+      tfvars-path: envs/prod/terraform.tfvars
+      backend-path: envs/prod/backend.hcl
+      is-drift-check: true
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+```
+
+#### `terraform-destroy.yml` — Destroy com Proteções
+
+Pipeline de destroy com double-check e state backup:
+
+| Job | Função |
+|-----|--------|
+| **Destroy Plan** | Preview do que será destruído |
+| **Destroy** | `terraform destroy` com Environment Gate |
+| **Verify** | Verifica se o state ficou limpo |
+
+**Inputs disponíveis:**
+
+| Input | Default | Descrição |
+|-------|---------|-----------|
+| `env-name` | _(required)_ | Ambiente alvo |
+| `tfvars-path` | _(required)_ | Caminho do terraform.tfvars |
+| `backend-path` | _(required)_ | Caminho do backend.hcl |
+| `reason` | _(required)_ | Justificativa obrigatória |
+| `target-resources` | `''` | Recursos específicos (comma-separated) |
+| `skip-state-backup` | `false` | Pular backup do state |
+
+```yaml
+jobs:
+  destroy:
+    uses: brianmonteiro54/devops-template/.github/workflows/terraform-destroy.yml@main
+    with:
+      env-name: dev
+      tfvars-path: envs/dev/terraform.tfvars
+      backend-path: envs/dev/backend.hcl
+      reason: 'Cleanup ambiente de teste'
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+```
+
+---
+
+## Funcionalidades dos Terraform Pipelines
+
+| Funcionalidade | Descrição |
+|----------------|-----------|
+| **PR Comments** | Comentários atualizáveis (edit, não duplica) com status de cada job |
+| **SARIF** | Resultados do Trivy integrados na aba Security do GitHub |
+| **Environment Gates** | Aprovação manual via GitHub Environments antes de apply/destroy |
+| **State Backup** | Backup automático do state antes de apply/destroy (90 dias) |
+| **Post-action Verify** | Drift check pós-apply e state check pós-destroy |
+| **Drift Detection** | Modo plan-only para detecção agendada de mudanças manuais |
+| **Smoke Tests** | Hook para `scripts/smoke-test.sh` customizável |
+| **Step Summary** | Tabelas e detalhes no summary do GitHub Actions |
+
+---
 
 ## Pré-requisitos
 
-Antes de rodar este pipeline, é necessário ter configurado:
+### Para workflows de Application (ECR/ECS)
 
-1. **Amazon Web Services (AWS)** com permissões adequadas para:
-   - Acessar o **ECR** para armazenar imagens Docker.
-   - Fazer deploy no **ECS**.
-2. **GitHub Secrets** para armazenar credenciais seguras:
-   - `AWS_ASSUME_ROLE_ARN`
-   - `AWS_REGION`
-   - `PRIVATE_KEY` (opcional).
+| Secret | Descrição |
+|--------|-----------|
+| `AWS_ASSUME_ROLE_ARN` | ARN do role para OIDC federation |
+| `AWS_REGION` | Região AWS |
+| `PRIVATE_KEY` | Certificado PEM (opcional) |
 
-3. **terraform.yml**: Workflow para provisionamento da infraestrutura usando Terraform.  
-   Pode ser reutilizado por outros workflows para garantir que a infraestrutura esteja provisionada antes do deploy da aplicação. Recebe parâmetros como ambiente (dev, prod) e bucket S3 para o statefile do Terraform.
+### Para workflows de Terraform
 
-## Uso do terraform.yml em outros repositórios
+| Secret | Descrição |
+|--------|-----------|
+| `AWS_ACCESS_KEY_ID` | Access key AWS |
+| `AWS_SECRET_ACCESS_KEY` | Secret key AWS |
+| `AWS_SESSION_TOKEN` | Session token (opcional — AWS Academy) |
 
-Este workflow pode ser chamado por outros repositórios através do uso da ação `workflow_call` ou via `uses` apontando para este repositório template, permitindo a reutilização centralizada do código de provisionamento de infraestrutura.
+### GitHub Environments (Terraform CD/Destroy)
 
-### Exemplo de uso em workflow externo:
+Configure em **Settings → Environments** do repositório consumidor:
+
+| Environment | Aprovadores | Uso |
+|-------------|-------------|-----|
+| `deploy-dev` | (opcional) | Apply em dev |
+| `deploy-prod` | 1+ reviewer | Apply em prod |
+| `destroy-dev` | 1 reviewer | Destroy em dev |
+| `destroy-prod` | 2+ reviewers | Destroy em prod |
+
+---
+
+## Usando a Branch `togglemaster`
+
+A branch `togglemaster` contém os callers prontos para o repositório [togglemaster-infrastructure](https://github.com/brianmonteiro54/togglemaster-infrastructure).
+
+Para usar, copie os arquivos para o repositório de destino:
+
+```bash
+# Clone temporário da branch
+git clone -b togglemaster https://github.com/brianmonteiro54/devops-template.git /tmp/devops-callers
+
+# Copie os callers para o repo de destino
+cp /tmp/devops-callers/.github/workflows/terraform-*.yml \
+   <seu-repo>/.github/workflows/
+
+rm -rf /tmp/devops-callers
+```
+
+---
+
+## Versionamento
 
 ```yaml
-jobs:
-  terraform:
-    uses: brianmonteiro54/devops-template/.github/workflows/terraform.yml@main
-    with:
-      environment: prod
-      aws-statefile-s3-bucket: "brian-terraform"
-    secrets:
-      AWS_ASSUME_ROLE_ARN: ${{ secrets.AWS_ASSUME_ROLE_ARN }}
-      AWS_REGION: ${{ secrets.AWS_REGION }}
+# Desenvolvimento — sempre pega a última versão
+uses: brianmonteiro54/devops-template/.github/workflows/terraform-ci.yml@main
 
-
-Para configurar essas credenciais, acesse o repositório no GitHub e vá em **Settings > Secrets and variables > Actions**. Adicione as variáveis de ambiente necessárias.
-
-A configuração dos pré-requisitos, **deve ser feita no repositório de destino**.
-
-### Exemplo de configuração no repositório de destino:
-
-```yaml
-name: Build & Deploy - Production
-
-on:
-  repository_dispatch:
-    types: [deploy-production]
-  push:
-    branches:
-      - main  
-
-jobs:
-  workflow:
-    uses: brianmonteiro54/devops-template/.github/workflows/bundle.yml@main
-
-    with:
-      IMAGE_NAME: api-production
-      TASK_NAME: api-production
-      CONTAINER_NAME: api-production
-      ECS_SERVICE: api-production
-      ECS_CLUSTER: production
-    secrets:
-      AWS_ASSUME_ROLE_ARN: ${{ secrets.AWS_ASSUME_ROLE_ARN }}
-      AWS_REGION: ${{ secrets.AWS_REGION }}
-      PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+# Produção — fixado em tag específica
+uses: brianmonteiro54/devops-template/.github/workflows/terraform-ci.yml@v2.0.0
+```

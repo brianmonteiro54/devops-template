@@ -1,0 +1,319 @@
+# =============================================================================
+# Reusable Terraform Destroy Pipeline
+# Repo: brianmonteiro54/devops-template
+# Path: .github/workflows/terraform-destroy.yml
+# =============================================================================
+
+name: Terraform Destroy (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      terraform-version:
+        required: false
+        type: string
+        default: '1.10.5'
+      aws-region:
+        required: false
+        type: string
+        default: 'us-east-1'
+      env-name:
+        required: true
+        type: string
+      tfvars-path:
+        required: true
+        type: string
+      backend-path:
+        required: true
+        type: string
+      reason:
+        required: true
+        type: string
+      target-resources:
+        required: false
+        type: string
+        default: ''
+      skip-state-backup:
+        required: false
+        type: boolean
+        default: false
+
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+      AWS_SESSION_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+# =============================================================================
+# Job 1: Destroy Plan
+# =============================================================================
+jobs:
+  destroy-plan:
+    name: Destroy Plan (${{ inputs.env-name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      has_changes: ${{ steps.plan.outputs.has_changes }}
+      targets_flag: ${{ steps.targets.outputs.flag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build target flags
+        id: targets
+        run: |
+          TARGETS_FLAG=""
+          if [[ -n "${{ inputs.target-resources }}" ]]; then
+            IFS=',' read -ra RESOURCES <<< "${{ inputs.target-resources }}"
+            for res in "${RESOURCES[@]}"; do
+              TARGETS_FLAG="${TARGETS_FLAG} -target=$(echo "$res" | xargs)"
+            done
+          fi
+          echo "flag=$TARGETS_FLAG" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity --output json | jq -r '.Arn'
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+          terraform_wrapper: false
+
+      - name: Cache Terraform providers
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.terraform.d/plugin-cache
+            **/.terraform/providers
+          key: tf-providers-${{ runner.os }}-${{ hashFiles('**/.terraform.lock.hcl') }}
+          restore-keys: tf-providers-${{ runner.os }}-
+
+      - name: Configure Terraform plugin cache
+        run: |
+          mkdir -p ~/.terraform.d/plugin-cache
+          echo 'plugin_cache_dir = "$HOME/.terraform.d/plugin-cache"' > ~/.terraformrc
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="${{ inputs.backend-path }}" \
+            -reconfigure -input=false -no-color
+
+      - name: Terraform Destroy Plan
+        id: plan
+        run: |
+          set +e
+          terraform plan -destroy \
+            -var-file="${{ inputs.tfvars-path }}" \
+            ${{ steps.targets.outputs.flag }} \
+            -out=tfplan-destroy \
+            -detailed-exitcode -input=false -no-color 2>&1 | tee destroy_plan_output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          case $EXIT_CODE in
+            0) echo "has_changes=false" >> "$GITHUB_OUTPUT" ;;
+            1) echo "has_changes=false" >> "$GITHUB_OUTPUT"; exit 1 ;;
+            2) echo "has_changes=true"  >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Destroy plan summary
+        if: always()
+        run: |
+          ENV="${{ inputs.env-name }}"
+          {
+            echo "### 🗑️ Destroy Plan — \`${ENV}\`"
+            echo "> **Razão:** ${{ inputs.reason }}"
+            [[ -n "${{ inputs.target-resources }}" ]] && echo "> **Targets:** \`${{ inputs.target-resources }}\`"
+            if [[ -f destroy_plan_output.txt ]]; then
+              DESTROYED=$(grep -oP '\d+(?= to destroy)' destroy_plan_output.txt | tail -1 || echo 0)
+              echo ""
+              echo "⚠️ **${DESTROYED:-0} recurso(s) serão destruídos**"
+              echo ""
+              echo "<details><summary>Ver plano</summary>"
+              echo '```hcl'
+              cat destroy_plan_output.txt
+              echo '```'
+              echo "</details>"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload destroy plan artifact
+        if: steps.plan.outputs.has_changes == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-destroy-${{ inputs.env-name }}-${{ github.sha }}
+          path: |
+            tfplan-destroy
+            destroy_plan_output.txt
+          retention-days: 1
+
+# =============================================================================
+# Job 2: Terraform Destroy
+# =============================================================================
+  destroy:
+    name: Destroy (${{ inputs.env-name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: destroy-plan
+    if: needs.destroy-plan.outputs.has_changes == 'true'
+    environment: destroy-${{ inputs.env-name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+          terraform_wrapper: false
+
+      - name: Cache Terraform providers
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.terraform.d/plugin-cache
+            **/.terraform/providers
+          key: tf-providers-${{ runner.os }}-${{ hashFiles('**/.terraform.lock.hcl') }}
+          restore-keys: tf-providers-${{ runner.os }}-
+
+      - name: Configure Terraform plugin cache
+        run: |
+          mkdir -p ~/.terraform.d/plugin-cache
+          echo 'plugin_cache_dir = "$HOME/.terraform.d/plugin-cache"' > ~/.terraformrc
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="${{ inputs.backend-path }}" \
+            -reconfigure -input=false -no-color
+
+      - name: Backup current state
+        id: backup
+        if: '!inputs.skip-state-backup'
+        run: |
+          BACKUP="state-pre-destroy-${{ inputs.env-name }}-$(date -u '+%Y%m%d-%H%M%S').json"
+          terraform state pull > "$BACKUP" 2>/dev/null || true
+          [[ -s "$BACKUP" ]] && echo "backup_file=$BACKUP" >> "$GITHUB_OUTPUT" || echo "backup_file=" >> "$GITHUB_OUTPUT"
+
+      - name: Upload state backup
+        if: steps.backup.outputs.backup_file != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: state-pre-destroy-${{ inputs.env-name }}-${{ github.sha }}
+          path: ${{ steps.backup.outputs.backup_file }}
+          retention-days: 90
+
+      - name: Download destroy plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-destroy-${{ inputs.env-name }}-${{ github.sha }}
+
+      - name: Terraform Destroy
+        id: destroy
+        run: |
+          echo "══════════════════════════════════════════════════"
+          echo "  🗑️  DESTROY — ${{ inputs.env-name }}"
+          echo "  Aprovado: ${{ github.actor }}"
+          echo "  Razão: ${{ inputs.reason }}"
+          echo "══════════════════════════════════════════════════"
+
+          set +e
+          terraform apply -auto-approve -input=false -no-color tfplan-destroy 2>&1 | tee destroy_output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "exitcode=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+          if [[ "$EXIT_CODE" != "0" ]]; then exit 1; fi
+
+      - name: Destroy summary
+        if: always()
+        run: |
+          EXIT="${{ steps.destroy.outputs.exitcode }}"
+          STATUS=$([[ "$EXIT" == "0" ]] && echo "✅ Concluído" || echo "❌ Falhou")
+          {
+            echo "### 🗑️ Destroy — \`${{ inputs.env-name }}\` — $STATUS"
+            echo "| Aprovado | \`${{ github.actor }}\` |"
+            echo "| Razão | ${{ inputs.reason }} |"
+            if [[ "$EXIT" != "0" ]]; then
+              echo ""
+              echo "⚠️ **Destroy pode ter sido parcial. Verifique o state!**"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload destroy output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: destroy-output-${{ inputs.env-name }}-${{ github.sha }}
+          path: destroy_output.txt
+          retention-days: 90
+
+# =============================================================================
+# Job 3: Post-Destroy Verification
+# =============================================================================
+  verify:
+    name: Verify (${{ inputs.env-name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: destroy
+    if: always() && needs.destroy.result == 'success'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+          terraform_wrapper: false
+
+      - name: Configure Terraform plugin cache
+        run: |
+          mkdir -p ~/.terraform.d/plugin-cache
+          echo 'plugin_cache_dir = "$HOME/.terraform.d/plugin-cache"' > ~/.terraformrc
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="${{ inputs.backend-path }}" \
+            -reconfigure -input=false -no-color
+
+      - name: Verify state is clean
+        run: |
+          RESOURCES=$(terraform state list 2>/dev/null | wc -l)
+          if [[ "$RESOURCES" -eq 0 ]]; then
+            echo "✅ State vazio — todos os recursos destruídos."
+          else
+            echo "::warning::⚠️ Ainda existem $RESOURCES recurso(s) no state!"
+            terraform state list
+          fi
