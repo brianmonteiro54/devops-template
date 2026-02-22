@@ -54,6 +54,8 @@ on:
         required: false
       AWS_SESSION_TOKEN:
         required: false
+      INFRACOST_API_KEY:
+        required: false
 
 permissions:
   contents: read
@@ -498,7 +500,78 @@ jobs:
             }
 
 # =============================================================================
-# Job 4: Plan Preview (PRs only)
+# Job 4: Infracost — Cost Estimate (PRs only)
+# =============================================================================
+  infracost:
+    name: Infracost Cost Estimate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Determine environment
+        id: env
+        run: |
+          if [[ "${{ github.base_ref }}" == "main" ]]; then
+            echo "ENV_NAME=prod" >> $GITHUB_OUTPUT
+          else
+            echo "ENV_NAME=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Infracost
+        uses: infracost/actions/setup@v3
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+
+      # ── Checkout branch base para gerar baseline de custo ──────────────
+      - name: Checkout base branch
+        uses: actions/checkout@v4
+        with:
+          ref: '${{ github.event.pull_request.base.ref }}'
+
+      - name: Generate Infracost cost baseline
+        run: |
+          VARFILE_FLAG=""
+          if [[ -f "envs/${{ steps.env.outputs.ENV_NAME }}/terraform.tfvars" ]]; then
+            VARFILE_FLAG="--terraform-var-file=envs/${{ steps.env.outputs.ENV_NAME }}/terraform.tfvars"
+          fi
+
+          infracost breakdown \
+            --path=. \
+            $VARFILE_FLAG \
+            --format=json \
+            --out-file=/tmp/infracost-base.json
+
+      # ── Checkout branch do PR para calcular diff ───────────────────────
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+
+      - name: Generate Infracost diff
+        run: |
+          VARFILE_FLAG=""
+          if [[ -f "envs/${{ steps.env.outputs.ENV_NAME }}/terraform.tfvars" ]]; then
+            VARFILE_FLAG="--terraform-var-file=envs/${{ steps.env.outputs.ENV_NAME }}/terraform.tfvars"
+          fi
+
+          infracost diff \
+            --path=. \
+            $VARFILE_FLAG \
+            --format=json \
+            --compare-to=/tmp/infracost-base.json \
+            --out-file=/tmp/infracost.json
+
+      # ── Postar comentário no PR ────────────────────────────────────────
+      - name: Post Infracost comment
+        run: |
+          infracost comment github \
+            --path=/tmp/infracost.json \
+            --repo=$GITHUB_REPOSITORY \
+            --github-token=${{ github.token }} \
+            --pull-request=${{ github.event.pull_request.number }} \
+            --behavior=update
+
+# =============================================================================
+# Job 5: Plan Preview (PRs only)
 # =============================================================================
   plan-preview:
     name: Plan Preview (${{ matrix.env_name }})
@@ -620,7 +693,7 @@ jobs:
             else await github.rest.issues.createComment({ ...params, issue_number: context.issue.number });
 
 # =============================================================================
-# Job 5: Terraform Docs
+# Job 6: Terraform Docs
 # =============================================================================
   docs:
     name: Terraform Docs
@@ -645,13 +718,13 @@ jobs:
           git-push: true
 
 # =============================================================================
-# Job 6: CI Gate
+# Job 7: CI Gate
 # =============================================================================
   ci-gate:
     name: CI Gate
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [lint-format, validate, security]
+    needs: [lint-format, validate, security, infracost]
     if: always()
 
     steps:
@@ -663,6 +736,7 @@ jobs:
           echo "  Lint & Format : ${{ needs.lint-format.result }}"
           echo "  Validate      : ${{ needs.validate.result }}"
           echo "  Security      : ${{ needs.security.result }}"
+          echo "  Infracost     : ${{ needs.infracost.result }}"
           echo "══════════════════════════════════════════════════"
 
           BLOCKING_FAILED=false
@@ -678,6 +752,10 @@ jobs:
 
           if [[ "${{ needs.security.result }}" == "failure" ]]; then
             echo "::warning::Security scan encontrou findings — revisão obrigatória"
+          fi
+
+          if [[ "${{ needs.infracost.result }}" == "failure" ]]; then
+            echo "::warning::Infracost falhou — estimativa de custo indisponível"
           fi
 
           if [[ "$BLOCKING_FAILED" == "true" ]]; then
@@ -701,4 +779,5 @@ jobs:
           | Lint & Format | \`${{ needs.lint-format.result }}\` | 🔒 Bloqueante |
           | Validate      | \`${{ needs.validate.result }}\`    | 🔒 Bloqueante |
           | Security      | \`${{ needs.security.result }}\`    | 🔒 Bloqueante |
+          | Infracost     | \`${{ needs.infracost.result }}\`   | 💰 Informativo |
           EOF
