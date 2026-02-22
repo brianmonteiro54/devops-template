@@ -20,9 +20,9 @@ Pipeline de integração contínua com 6 jobs paralelos:
 
 | Input | Default | Descrição |
 |-------|---------|-----------|
-| `terraform-version` | `1.10.5` | Versão do Terraform |
-| `tflint-version` | `v0.55.1` | Versão do TFLint |
-| `checkov-version` | `3.2.350` | Versão do Checkov |
+| `terraform-version` | `1.14.5` | Versão do Terraform |
+| `tflint-version` | `v0.61.0` | Versão do TFLint |
+| `checkov-version` | `3.2.354` | Versão do Checkov |
 | `checkov-skip-checks` | `CKV_AWS_119,CKV_AWS_28` | Checks para ignorar |
 | `trivy-severity` | `MEDIUM,HIGH,CRITICAL` | Severidades do Trivy |
 | `aws-region` | `us-east-1` | Região AWS |

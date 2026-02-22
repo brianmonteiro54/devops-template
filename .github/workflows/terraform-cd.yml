@@ -12,7 +12,7 @@ on:
       terraform-version:
         required: false
         type: string
-        default: '1.10.5'
+        default: '1.14.5'
       aws-region:
         required: false
         type: string
@@ -69,12 +69,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
         with:
           ref: ${{ inputs.checkout-ref || github.sha }}
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6.0.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -88,13 +88,13 @@ jobs:
           echo "Account: $(echo "$IDENTITY" | jq -r '.Account')"
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v3.1.2
         with:
           terraform_version: ${{ inputs.terraform-version }}
           terraform_wrapper: false
 
       - name: Cache Terraform providers
-        uses: actions/cache@v4
+        uses: actions/cache@v5.0.3
         with:
           path: |
             ~/.terraform.d/plugin-cache
@@ -172,7 +172,7 @@ jobs:
 
       - name: Upload plan artifact
         if: steps.plan.outputs.has_changes == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6.0.0
         with:
           name: tfplan-${{ inputs.env-name }}-${{ github.sha }}
           path: |
@@ -218,12 +218,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
         with:
           ref: ${{ inputs.checkout-ref || github.sha }}
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6.0.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -236,13 +236,13 @@ jobs:
           echo "AWS Identity: $(echo "$IDENTITY" | jq -r '.Arn')"
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v3.1.2
         with:
           terraform_version: ${{ inputs.terraform-version }}
           terraform_wrapper: false
 
       - name: Cache Terraform providers
-        uses: actions/cache@v4
+        uses: actions/cache@v5.0.3
         with:
           path: |
             ~/.terraform.d/plugin-cache
@@ -262,7 +262,7 @@ jobs:
             -reconfigure -input=false -no-color
 
       - name: Download plan artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7.0.0
         with:
           name: tfplan-${{ inputs.env-name }}-${{ github.sha }}
 
@@ -279,7 +279,7 @@ jobs:
 
       - name: Upload state backup
         if: steps.backup.outputs.backup_file != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6.0.0
         with:
           name: state-backup-${{ inputs.env-name }}-${{ github.sha }}
           path: ${{ steps.backup.outputs.backup_file }}
@@ -316,7 +316,7 @@ jobs:
 
       - name: Upload apply output
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6.0.0
         with:
           name: apply-output-${{ inputs.env-name }}-${{ github.sha }}
           path: apply_output.txt
@@ -344,10 +344,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6.0.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -355,7 +355,7 @@ jobs:
           aws-region: ${{ inputs.aws-region }}
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v3.1.2
         with:
           terraform_version: ${{ inputs.terraform-version }}
           terraform_wrapper: false

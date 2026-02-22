@@ -12,15 +12,15 @@ on:
       terraform-version:
         required: false
         type: string
-        default: '1.10.5'
+        default: '1.14.5'
       tflint-version:
         required: false
         type: string
-        default: 'v0.55.1'
+        default: 'v0.61.0'
       checkov-version:
         required: false
         type: string
-        default: '3.2.350'
+        default: '3.2.354'
       checkov-skip-checks:
         required: false
         type: string
@@ -71,15 +71,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v3.1.2
         with:
           terraform_version: ${{ inputs.terraform-version }}
 
       - name: Cache Terraform providers
-        uses: actions/cache@v4
+        uses: actions/cache@v5.0.3
         with:
           path: |
             ~/.terraform.d/plugin-cache
@@ -96,14 +96,14 @@ jobs:
         run: terraform init -backend=false -input=false -no-color
 
       - name: Cache TFLint plugins
-        uses: actions/cache@v4
+        uses: actions/cache@v5.0.3
         with:
           path: ~/.tflint.d/plugins
           key: tflint-${{ runner.os }}-${{ hashFiles('.tflint.hcl') }}
           restore-keys: tflint-${{ runner.os }}-
 
       - name: Setup TFLint
-        uses: terraform-linters/setup-tflint@v4
+        uses: terraform-linters/setup-tflint@v6.2.1
         with:
           tflint_version: ${{ inputs.tflint-version }}
 
@@ -126,7 +126,7 @@ jobs:
 
       - name: Comment PR — Lint & Format
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           FMT_OUTCOME: ${{ steps.fmt.outcome }}
           TFLINT_OUTCOME: ${{ steps.tflint.outcome }}
@@ -189,15 +189,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v3.1.2
         with:
           terraform_version: ${{ inputs.terraform-version }}
 
       - name: Cache Terraform providers
-        uses: actions/cache@v4
+        uses: actions/cache@v5.0.3
         with:
           path: |
             ~/.terraform.d/plugin-cache
@@ -219,7 +219,7 @@ jobs:
 
       - name: Comment PR — Validate
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
         with:
@@ -291,15 +291,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6.2.0
         with:
-          python-version: '3.12'
+          python-version: '3.13.12'
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5.0.3
         with:
           path: ~/.cache/pip
           key: pip-checkov-${{ inputs.checkov-version }}
@@ -347,7 +347,7 @@ jobs:
 
       - name: Upload Checkov report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6.0.0
         with:
           name: checkov-report-${{ github.sha }}
           path: checkov-report.json
@@ -356,7 +356,7 @@ jobs:
 
       # ── Trivy ───────────────────────────────────────────────────────────────
       - name: Setup Terraform (for Trivy module resolution)
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v3.1.2
         with:
           terraform_version: ${{ inputs.terraform-version }}
 
@@ -379,7 +379,7 @@ jobs:
 
       - name: Run Trivy IaC scanner (Table)
         id: trivy
-        uses: aquasecurity/trivy-action@0.34.0
+        uses: aquasecurity/trivy-action@0.34.1
         with:
           scan-type: 'config'
           scan-ref: '.'
@@ -394,7 +394,7 @@ jobs:
 
       - name: Trivy SARIF report
         if: always()
-        uses: aquasecurity/trivy-action@0.34.0
+        uses: aquasecurity/trivy-action@0.34.1
         with:
           scan-type: 'config'
           scan-ref: '.'
@@ -409,14 +409,14 @@ jobs:
 
       - name: Upload Trivy SARIF to GitHub Security
         if: always()
-        uses: github/codeql-action/upload-sarif@v4.32.3
+        uses: github/codeql-action/upload-sarif@v4.32.4
         with:
           sarif_file: trivy-results.sarif
           category: trivy-iac
 
       - name: Upload Trivy reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6.0.0
         with:
           name: trivy-reports-${{ github.sha }}
           path: |
@@ -427,7 +427,7 @@ jobs:
 
       - name: Comment PR — Security
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           CHECKOV_OUTCOME: ${{ steps.checkov.outcome }}
           TRIVY_OUTCOME: ${{ steps.trivy.outcome }}
@@ -522,11 +522,11 @@ jobs:
 
       - name: Checkout
         if: env.SHOULD_RUN == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
 
       - name: Configure AWS Credentials
         if: env.SHOULD_RUN == 'true'
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6.0.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -535,13 +535,13 @@ jobs:
 
       - name: Setup Terraform
         if: env.SHOULD_RUN == 'true'
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v3.1.2
         with:
           terraform_version: ${{ inputs.terraform-version }}
 
       - name: Cache Terraform providers
         if: env.SHOULD_RUN == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v5.0.3
         with:
           path: |
             ~/.terraform.d/plugin-cache
@@ -579,7 +579,7 @@ jobs:
 
       - name: Comment PR — Plan Preview
         if: env.SHOULD_RUN == 'true' && always()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           HAS_CHANGES: ${{ steps.plan.outputs.has_changes }}
           ENV_NAME: ${{ matrix.env_name }}
@@ -632,7 +632,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
         with:
           ref: ${{ github.event.pull_request.head.ref }}
 
