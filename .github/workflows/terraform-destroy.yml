@@ -45,6 +45,8 @@ on:
         required: true
       AWS_SESSION_TOKEN:
         required: false
+      TF_BACKEND_BUCKET:
+        required: true
 
 permissions:
   contents: read
@@ -95,7 +97,7 @@ jobs:
           terraform_wrapper: false
 
       - name: Cache Terraform providers
-        uses: actions/cache@v5.0.3
+        uses: actions/cache@v5
         with:
           path: |
             ~/.terraform.d/plugin-cache
@@ -112,6 +114,7 @@ jobs:
         run: |
           terraform init \
             -backend-config="${{ inputs.backend-path }}" \
+            -backend-config="bucket=${{ secrets.TF_BACKEND_BUCKET }}" \
             -reconfigure -input=false -no-color
 
       - name: Terraform Destroy Plan
@@ -191,7 +194,7 @@ jobs:
           terraform_wrapper: false
 
       - name: Cache Terraform providers
-        uses: actions/cache@v5.0.3
+        uses: actions/cache@v5
         with:
           path: |
             ~/.terraform.d/plugin-cache
@@ -208,6 +211,7 @@ jobs:
         run: |
           terraform init \
             -backend-config="${{ inputs.backend-path }}" \
+            -backend-config="bucket=${{ secrets.TF_BACKEND_BUCKET }}" \
             -reconfigure -input=false -no-color
 
       - name: Backup current state
@@ -306,6 +310,7 @@ jobs:
         run: |
           terraform init \
             -backend-config="${{ inputs.backend-path }}" \
+            -backend-config="bucket=${{ secrets.TF_BACKEND_BUCKET }}" \
             -reconfigure -input=false -no-color
 
       - name: Verify state is clean
