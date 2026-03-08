@@ -119,6 +119,10 @@ jobs:
 
       - name: Terraform Destroy Plan
         id: plan
+        env:
+          TF_VAR_aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          TF_VAR_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          TF_VAR_aws_session_token: ${{ secrets.AWS_SESSION_TOKEN }}
         run: |
           set +e
           terraform plan -destroy \
@@ -237,6 +241,10 @@ jobs:
 
       - name: Terraform Destroy
         id: destroy
+        env:
+          TF_VAR_aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          TF_VAR_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          TF_VAR_aws_session_token: ${{ secrets.AWS_SESSION_TOKEN }}
         run: |
           echo "══════════════════════════════════════════════════"
           echo "  🗑️  DESTROY — ${{ inputs.env-name }}"
