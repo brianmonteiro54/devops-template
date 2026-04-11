@@ -219,7 +219,10 @@ jobs:
 
       - name: Terraform Validate
         id: validate
-        run: terraform validate -no-color 2>&1 | tee validate_output.txt
+        shell: bash
+        run: |
+          set -o pipefail
+          terraform validate -no-color 2>&1 | tee validate_output.txt
 
       - name: Comment PR — Validate
         if: github.event_name == 'pull_request'
@@ -751,6 +754,7 @@ jobs:
 
           if [[ "${{ needs.validate.result }}" == "failure" ]]; then
             echo "::warning::Validate reportou problemas"
+            BLOCKING_FAILED=true
           fi
 
           if [[ "${{ needs.security.result }}" == "failure" ]]; then
