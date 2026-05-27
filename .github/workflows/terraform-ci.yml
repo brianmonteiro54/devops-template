@@ -386,7 +386,7 @@ jobs:
 
       - name: Run Trivy IaC scanner (Table)
         id: trivy
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'config'
           scan-ref: '.'
@@ -401,7 +401,7 @@ jobs:
 
       - name: Trivy SARIF report
         if: always()
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'config'
           scan-ref: '.'
