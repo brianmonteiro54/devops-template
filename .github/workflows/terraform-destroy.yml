@@ -91,7 +91,7 @@ jobs:
         run: aws sts get-caller-identity --output json | jq -r '.Arn'
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3.1.2
+        uses: hashicorp/setup-terraform@v4.0.1
         with:
           terraform_version: ${{ inputs.terraform-version }}
           terraform_wrapper: false
@@ -192,7 +192,7 @@ jobs:
           aws-region: ${{ inputs.aws-region }}
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3.1.2
+        uses: hashicorp/setup-terraform@v4.0.1
         with:
           terraform_version: ${{ inputs.terraform-version }}
           terraform_wrapper: false
@@ -304,7 +304,7 @@ jobs:
           aws-region: ${{ inputs.aws-region }}
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3.1.2
+        uses: hashicorp/setup-terraform@v4.0.1
         with:
           terraform_version: ${{ inputs.terraform-version }}
           terraform_wrapper: false
