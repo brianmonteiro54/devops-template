@@ -524,7 +524,7 @@ jobs:
           fi
 
       - name: Setup Infracost
-        uses: infracost/actions/setup@v3
+        uses: infracost/actions@v4.2.0
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
 
