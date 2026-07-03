@@ -530,7 +530,7 @@ jobs:
 
       # ── Checkout branch base para gerar baseline de custo ──────────────
       - name: Checkout base branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
         with:
           ref: '${{ github.event.pull_request.base.ref }}'
 
@@ -549,7 +549,7 @@ jobs:
 
       # ── Checkout branch do PR para calcular diff ───────────────────────
       - name: Checkout PR branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
 
       - name: Generate Infracost diff
         run: |
