@@ -64,6 +64,8 @@ on:
         required: false
       ANTHROPIC_API_KEY:
         required: false
+      GITHUB_TOKEN:
+        required: false
 
 permissions:
   contents: read
@@ -140,6 +142,7 @@ jobs:
           TF_VAR_pagerduty_service_key: ${{ secrets.PAGERDUTY_SERVICE_KEY }}
           TF_VAR_new_relic_api_key: ${{ secrets.NEW_RELIC_API_KEY }}
           TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          TF_VAR_github_token: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set +e
           terraform plan \
@@ -323,6 +326,7 @@ jobs:
           TF_VAR_pagerduty_service_key: ${{ secrets.PAGERDUTY_SERVICE_KEY }}
           TF_VAR_new_relic_api_key: ${{ secrets.NEW_RELIC_API_KEY }}
           TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          TF_VAR_github_token: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "══════════════════════════════════════════════════"
           echo "  🚀 TERRAFORM APPLY — ${{ inputs.env-name }}"
@@ -420,6 +424,7 @@ jobs:
           TF_VAR_pagerduty_service_key: ${{ secrets.PAGERDUTY_SERVICE_KEY }}
           TF_VAR_new_relic_api_key: ${{ secrets.NEW_RELIC_API_KEY }}
           TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          TF_VAR_github_token: ${{ secrets.GITHUB_TOKEN }}
 
         run: |
           set +e
